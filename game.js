@@ -142,6 +142,7 @@ const state = {
   flashlight:  true,
   weapon:      0,            // 0=blade, 1=pistol, 2=bomb
   ammo:        [Infinity, 20, 3],
+  medkits:     0,
   lastTime:    0,
   msgTimeout:  null,
   doorKeys:    0,
@@ -183,6 +184,7 @@ function saveProgress() {
     items: state.items,
     weapon: state.weapon,
     ammo: encodeAmmo(state.ammo),
+    medkits: state.medkits,
     doorKeys: state.doorKeys,
     flashlight: state.flashlight,
     timestamp: Date.now(),
@@ -422,10 +424,10 @@ function createPlayer() {
    ENEMY FACTORY
 ────────────────────────────────────────────── */
 const ENEMY_TYPES = [
-  { name: 'GHOUL',   color: '#cc2200', glow: 'rgba(200,40,0,0.6)',   hp: 25,  spd: 1.0, dmg: 8,  score: 100, size: 0.6 },
-  { name: 'SPECTER', color: '#aa44ff', glow: 'rgba(170,68,255,0.6)',hp: 15,  spd: 1.8, dmg: 5,  score: 150, size: 0.55 },
-  { name: 'REAPER',  color: '#4444cc', glow: 'rgba(80,80,220,0.65)',  hp: 60,  spd: 0.7, dmg: 20, score: 300, size: 0.8 },
-  { name: 'CRAWLER', color: '#55aa00', glow: 'rgba(80,160,0,0.55)',   hp: 35,  spd: 1.4, dmg: 12, score: 200, size: 0.5 },
+  { name: 'GHOUL',   color: '#cc2200', glow: 'rgba(200,40,0,0.6)',    hp: 30, spd: 1.3,  dmg: 12, score: 120, size: 0.62, behavior: 'aggressive', chaseBias: 0.9,  meleeRange: 0.9 },
+  { name: 'SPECTER', color: '#aa44ff', glow: 'rgba(170,68,255,0.6)',  hp: 18, spd: 2.0,  dmg: 6,  score: 170, size: 0.55, behavior: 'ranged',     chaseBias: 0.5,  meleeRange: 0.65, preferredRange: TILE * 3.2, shootRange: TILE * 8.5 },
+  { name: 'REAPER',  color: '#4444cc', glow: 'rgba(80,80,220,0.65)',  hp: 75, spd: 0.75, dmg: 28, score: 340, size: 0.82, behavior: 'ambush',     chaseBias: 0.45, meleeRange: 1.0 },
+  { name: 'CRAWLER', color: '#55aa00', glow: 'rgba(80,160,0,0.55)',   hp: 40, spd: 1.55, dmg: 16, score: 220, size: 0.5,  behavior: 'skittish',   chaseBias: 0.35, meleeRange: 0.75, retreatRange: TILE * 2.1 },
 ];
 
 function spawnEnemies(map, floor) {
@@ -442,6 +444,8 @@ function spawnEnemies(map, floor) {
 
     enemies.push({
       ...type,
+      spd: type.spd * (0.9 + Math.random() * 0.3) * (1 + Math.min(floor, MAX_FLOOR) * 0.006),
+      dmg: Math.floor(type.dmg * (0.9 + Math.random() * 0.25) * (1 + Math.min(floor, MAX_FLOOR) * 0.01)),
       x: pos.c * TILE + TILE / 2,
       y: pos.r * TILE + TILE / 2,
       vx: 0, vy: 0,
@@ -501,6 +505,7 @@ function startGame() {
   state.score  = 0;
   state.weapon = 0;
   state.ammo   = [Infinity, 20, 3];
+  state.medkits = 0;
   state.doorKeys = 0;
   resetGame(false);
   buildLevel();
@@ -653,6 +658,7 @@ function continueGame() {
   state.items = save.items;
   state.weapon = Math.min(2, Math.max(0, Math.floor(Number(save.weapon) || 0)));
   state.ammo = decodeAmmo(save.ammo);
+  state.medkits = Math.max(0, Math.floor(Number(save.medkits) || 0));
   state.doorKeys = Math.max(0, Math.floor(Number(save.doorKeys) || 0));
   state.flashlight = save.flashlight !== false;
   state.bullets = [];
@@ -838,13 +844,14 @@ function tryInteract() {
 }
 
 function tryUseItem() {
-  // R key: use health from items picked up
+  // R key: consume one medkit
   const p = state.player;
-  if (p.hp < p.maxHp) {
-    p.hp = Math.min(p.maxHp, p.hp + 30);
-    showMessage('USED MEDKIT +30 HP');
-    updateHUD();
-  }
+  if (p.hp >= p.maxHp) { showMessage('HP FULL'); return; }
+  if (state.medkits <= 0) { showMessage('NO MEDKITS'); return; }
+  state.medkits--;
+  p.hp = Math.min(p.maxHp, p.hp + 30);
+  showMessage(`USED MEDKIT +30 HP (${state.medkits} LEFT)`);
+  updateHUD();
 }
 
 /* ──────────────────────────────────────────────
@@ -907,26 +914,55 @@ function updateEnemies(dt) {
   const p = state.player;
   for (const e of state.enemies) {
     if (e.attackCooldown > 0) e.attackCooldown--;
+    e.stateTimer++;
 
     const dx = p.x - e.x, dy = p.y - e.y;
     const dist = Math.hypot(dx, dy);
+    const safeDist = Math.max(dist, 0.0001);
+    const dirX = dx / safeDist;
+    const dirY = dy / safeDist;
 
-    // State machine
+    // State machine: behavior-specific detection and pursuit
+    let shouldChase = false;
     if (dist < e.alertRange) {
-      e.state = 'chase';
-    } else {
-      e.state = 'idle';
+      if (e.behavior === 'aggressive') {
+        shouldChase = dist < TILE * 2.4 || Math.random() < e.chaseBias;
+      } else if (e.behavior === 'ambush') {
+        shouldChase = dist < e.alertRange * 0.65 || (e.stateTimer % 220 < 60);
+      } else if (e.behavior === 'ranged') {
+        shouldChase = dist > (e.preferredRange || TILE * 3) && Math.random() < e.chaseBias;
+      } else if (e.behavior === 'skittish') {
+        shouldChase = dist > (e.retreatRange || TILE * 2) && Math.random() < e.chaseBias;
+      } else {
+        shouldChase = true;
+      }
     }
+    e.state = shouldChase ? 'chase' : 'idle';
 
     if (e.state === 'chase') {
-      // Move towards player with simple wall avoidance
-      const spd = e.spd * (dt / 16);
-      let nx = e.x + (dx / dist) * spd;
-      let ny = e.y + (dy / dist) * spd;
+      // Move with behavior-aware direction.
+      let moveX = dirX;
+      let moveY = dirY;
+      if (e.behavior === 'ranged' && dist < (e.preferredRange || TILE * 3)) {
+        moveX = -dirX;
+        moveY = -dirY;
+      }
+      if (e.behavior === 'skittish' && dist < (e.retreatRange || TILE * 2)) {
+        moveX = -dirX;
+        moveY = -dirY;
+      }
+
+      const behaviorSpeed =
+        e.behavior === 'aggressive' ? 1.15 :
+        e.behavior === 'ranged' ? 0.95 :
+        e.behavior === 'ambush' ? 1.05 : 1;
+      const spd = e.spd * behaviorSpeed * (dt / 16);
+      let nx = e.x + moveX * spd;
+      let ny = e.y + moveY * spd;
 
       // wall slide
-      if (!collidesWithWall(nx, e.y, e.size * TILE)) nx = e.x;
-      if (!collidesWithWall(e.x, ny, e.size * TILE)) ny = e.y;
+      if (collidesWithWall(nx, e.y, e.size * TILE)) nx = e.x;
+      if (collidesWithWall(e.x, ny, e.size * TILE)) ny = e.y;
       if (collidesWithWall(nx, e.y, e.size * TILE) && collidesWithWall(e.x, ny, e.size * TILE)) {
         // try random step
         nx = e.x + (Math.random()-0.5)*2;
@@ -934,21 +970,25 @@ function updateEnemies(dt) {
       }
       e.x = nx; e.y = ny;
 
-      // Attack if close
-      if (dist < TILE * 0.8 && e.attackCooldown <= 0) {
-        e.attackCooldown = 60;
+      // Melee attack range varies by enemy type.
+      if (dist < TILE * (e.meleeRange || 0.8) && e.attackCooldown <= 0 && e.name !== 'SPECTER') {
+        e.attackCooldown = 65;
         hurtPlayer(e.dmg, e);
       }
 
-      // Enemy projectiles (SPECTER type)
-      if (e.name === 'SPECTER' && dist < 300 && e.attackCooldown === 45) {
-        fireBullet({ x: e.x, y: e.y, facing: { x: dx/dist, y: dy/dist } },
-          dx/dist, dy/dist, 3.5, 8, e.color);
+      // SPECTER prefers ranged attacks.
+      if (e.name === 'SPECTER' && dist < (e.shootRange || TILE * 7) && e.attackCooldown <= 0) {
+        e.attackCooldown = 80;
+        fireBullet({ x: e.x, y: e.y, facing: { x: dirX, y: dirY } },
+          dirX, dirY, 3.5, 8, e.color);
         state.bullets[state.bullets.length-1].fromPlayer = false;
+      }
+      if (e.name === 'SPECTER' && dist < TILE * 0.7 && e.attackCooldown <= 0) {
+        e.attackCooldown = 70;
+        hurtPlayer(Math.max(3, Math.floor(e.dmg * 0.7)), e);
       }
     } else {
       // Idle wander
-      e.stateTimer++;
       if (e.stateTimer % 120 === 0) {
         e.vx = (Math.random()-0.5) * 1.2;
         e.vy = (Math.random()-0.5) * 1.2;
@@ -1033,9 +1073,8 @@ function collectItem(item) {
   item.collected = true;
   spawnParticles(item.x, item.y, item.type === 'health' ? COLORS.health : COLORS.ammo, 8);
   if (item.type === 'health') {
-    const heal = 15 + Math.floor(Math.random()*15);
-    state.player.hp = Math.min(state.player.maxHp, state.player.hp + heal);
-    showMessage(`+${heal} HP`);
+    state.medkits++;
+    showMessage(`+1 MEDKIT (${state.medkits} TOTAL)`);
   } else if (item.type === 'ammo') {
     const bullets = 6 + Math.floor(Math.random()*8);
     state.ammo[1] += bullets;
