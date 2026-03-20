@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════
-   CRYPTVAULT — RETRO HORROR GAME ENGINE
+  Dungeon Rush  Nightfall — RETRO HORROR GAME ENGINE
    game.js  |  ES2020, no dependencies
 ══════════════════════════════════════════════ */
 
@@ -54,6 +54,7 @@ const TILE   = 40;         // pixels per tile
 const COLS   = 21;         // map width  (must be odd)
 const ROWS   = 17;         // map height (must be odd)
 const FPS    = 60;
+const MAX_FLOOR = 67;
 
 const COLORS = {
   wall:       '#3a1a1a',
@@ -416,6 +417,7 @@ function resetGame(full = true) {
 }
 
 function buildLevel() {
+  state.floor = Math.min(state.floor, MAX_FLOOR);
   state.map          = generateMap(state.floor);
   // Place doors safely and get matching key positions
   const doorKeyPairs = placeDoorsSafe(state.map, state.floor);
@@ -425,16 +427,85 @@ function buildLevel() {
   state.bullets      = [];
   state.particles    = [];
   document.getElementById('floorLabel').textContent =
-    `FLOOR ${state.floor} — ${FLOOR_NAMES[Math.min(state.floor-1, FLOOR_NAMES.length-1)]}`;
+    `FLOOR ${state.floor} — ${FLOOR_NAMES[state.floor - 1] || `DEPTH ${state.floor}`}`;
   buildMinimap();
 }
 
 const FLOOR_NAMES = [
-  'THE CATACOMBS', 'BONE CORRIDOR', 'SHADOW LAIR', 'THE ABYSS',
-  'CRYPTS BELOW', 'WAILING HALLS', 'THE SANCTUM', 'FINAL DESCENT',
+  'THE CATACOMBS',
+  'BONE CORRIDOR',
+  'SHADOW LAIR',
+  'THE ABYSS',
+  'CRYPTS BELOW',
+  'WAILING HALLS',
+  'THE SANCTUM',
+  'FINAL DESCENT',
+  'ASHEN GATE',
+  'BROKEN ALTAR',
+  'HOLLOW STAIRS',
+  'THE BLACK CHAPEL',
+  'THORNED VAULT',
+  'DREAD ANTECHAMBER',
+  'RUSTED OSSUARY',
+  'CANDLELESS NAVE',
+  'MOURNERS PASSAGE',
+  'THE SUNKEN CRYPT',
+  'WHISPER TUNNELS',
+  'VEIL OF DUST',
+  'HUNGER CELLAR',
+  'THE IRON MAZE',
+  'CHAINED GALLERY',
+  'LANTERN GRAVE',
+  'THE FALLEN CHOIR',
+  'COLD EMBER HALL',
+  'TOMB OF ECHOES',
+  'BLEAK ROTUNDA',
+  'MOONLESS COURT',
+  'GRIEVING ARCH',
+  'BASILISK STAIRS',
+  'THE SHIVERING WARD',
+  'BROOD NEST',
+  'BLACKWATER KEEP',
+  'THE FORGOTTEN WELL',
+  'MIRRORLESS ROOM',
+  'HUSK CHAMBER',
+  'THE BLEEDING WALL',
+  'SALTED RELIQUARY',
+  'NIGHTBELL HALL',
+  'THE CINDER VEIL',
+  'CRUMBLING APSE',
+  'LOCKED THRESHOLD',
+  'RAVEN BASTION',
+  'GRANITE SILENCE',
+  'THE DEEPING SPIRAL',
+  'SAINTLESS SHRINE',
+  'GLASSBONE CORRIDOR',
+  'THE GLOAM PIT',
+  'EMBERLESS KILN',
+  'WOLF PRAYER HALL',
+  'THE RUINED CROWN',
+  'SCARLET CATACOMB',
+  'HARBOR OF SHADES',
+  'THIRTEENTH ARCH',
+  'THE GATE OF THORNS',
+  'ASHCRYPT CROSSING',
+  'THE LAST VESTIBULE',
+  'DIRGE PROMENADE',
+  'PENITENT VAULT',
+  'THE GREAT OSSUARY',
+  'OBSIDIAN PASS',
+  'THE SILENT WELLSPRING',
+  'KING WITHOUT LIGHT',
+  'FINAL PROCESSION',
+  'THE NIGHTFALL THRONE',
+  'FLOOR 67: END OF NIGHTFALL',
 ];
 
 function nextLevel() {
+  if (state.floor >= MAX_FLOOR) {
+    showScreen('titleScreen');
+    return;
+  }
   state.floor++;
   buildLevel();
   showScreen('gameScreen');
@@ -627,6 +698,20 @@ function triggerLevelComplete() {
   state.running = false;
   cancelAnimationFrame(state.animFrame);
   document.getElementById('lcScore').textContent = state.score;
+
+  const isFinalFloor = state.floor >= MAX_FLOOR;
+  const lcTitle = document.getElementById('lcTitle');
+  const lcSub = document.getElementById('lcSub');
+  const nextBtn = document.getElementById('nextFloorBtn');
+  if (lcTitle) lcTitle.textContent = isFinalFloor ? 'FINAL FLOOR CLEARED' : 'FLOOR CLEARED';
+  if (lcSub) lcSub.textContent = isFinalFloor ? 'YOU CONQUERED ALL 67 FLOORS' : 'YOU DESCEND DEEPER...';
+  if (nextBtn) {
+    nextBtn.textContent = isFinalFloor ? '◄ MAIN MENU' : '► NEXT FLOOR';
+    nextBtn.onclick = isFinalFloor
+      ? () => { showScreen('titleScreen'); resetGame(); }
+      : () => nextLevel();
+  }
+
   showScreen('levelCompleteScreen');
 }
 
