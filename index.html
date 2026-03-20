@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dungeon Rush : Nightfall</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Creepster&family=Special+Elite&display=swap" rel="stylesheet" />
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-black overflow-hidden select-none">
+
+  <!-- ═══════════════════════════════════════
+       SCANLINE OVERLAY
+  ═══════════════════════════════════════ -->
+  <div id="scanlines"></div>
+  <div id="vignette"></div>
+  <div id="noise"></div>
+
+  <!-- ═══════════════════════════════════════
+       TITLE SCREEN
+  ═══════════════════════════════════════ -->
+  <div id="titleScreen" class="screen active">
+    <div id="titleBg"></div>
+    <div class="title-content">
+      <div class="blood-drip">
+        <span>D</span><span>U</span><span>N</span><span>G</span><span>E</span><span>O</span><span>N</span>
+        <span>R</span><span>U</span><span>S</span><span>H</span>
+        <span>N</span><span>I</span><span>G</span><span>H</span><span>T</span><span>F</span><span>A</span><span>L</span><span>L</span>
+      </div>
+      <p class="subtitle">A DESCENT INTO DARKNESS</p>
+      <div class="pixel-skull">☠</div>
+      <div class="menu-options">
+        <div class="menu-item selected" id="menuStart">▶ NEW GAME</div>
+        <div class="menu-item" id="menuControls">▶ CONTROLS</div>
+        <div class="menu-item" id="menuCredits">▶ CREDITS</div>
+      </div>
+      <p class="press-start blink">PRESS ENTER OR CLICK TO SELECT</p>
+      <p class="version-text">VER 1.0 — © 1987 CRYPTWORKS INC.</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       CONTROLS SCREEN
+  ═══════════════════════════════════════ -->
+  <div id="controlsScreen" class="screen">
+    <div class="controls-panel">
+      <h2 class="panel-title">— CONTROLS —</h2>
+      <div class="control-grid">
+        <div class="control-row"><span class="key">W / ↑</span><span class="action">MOVE UP</span></div>
+        <div class="control-row"><span class="key">S / ↓</span><span class="action">MOVE DOWN</span></div>
+        <div class="control-row"><span class="key">A / ←</span><span class="action">MOVE LEFT</span></div>
+        <div class="control-row"><span class="key">D / →</span><span class="action">MOVE RIGHT</span></div>
+        <div class="control-row"><span class="key">SPACE</span><span class="action">ATTACK / SHOOT</span></div>
+        <div class="control-row"><span class="key">E</span><span class="action">INTERACT / OPEN</span></div>
+        <div class="control-row"><span class="key">R</span><span class="action">RELOAD / USE ITEM</span></div>
+        <div class="control-row"><span class="key">F</span><span class="action">TOGGLE FLASHLIGHT</span></div>
+        <div class="control-row"><span class="key">ESC</span><span class="action">PAUSE / MENU</span></div>
+        <div class="control-row"><span class="key">1 / 2 / 3</span><span class="action">SELECT WEAPON</span></div>
+      </div>
+      <button class="retro-btn" onclick="showScreen('titleScreen')">◄ BACK</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       CREDITS SCREEN
+  ═══════════════════════════════════════ -->
+  <div id="creditsScreen" class="screen">
+    <div class="credits-panel">
+      <h2 class="panel-title">— CREDITS —</h2>
+      <p class="credit-line">GAME DESIGN: CRYPTWORKS INC.</p>
+      <p class="credit-line">ART: 8-BIT GRAVEYARD STUDIOS</p>
+      <p class="credit-line">MUSIC: PHANTOM FREQUENCIES</p>
+      <p class="credit-line">CODE: BARON VON HEXADECIMAL</p>
+      <br/>
+      <p class="credit-line small">"ABANDON HOPE, ALL YE WHO ENTER"</p>
+      <button class="retro-btn" onclick="showScreen('titleScreen')">◄ BACK</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       GAME SCREEN
+  ═══════════════════════════════════════ -->
+  <div id="gameScreen" class="screen">
+
+    <!-- HUD Top Bar -->
+    <div id="hud">
+      <div class="hud-left">
+        <span class="hud-label">HP</span>
+        <div class="hp-bar-wrap">
+          <div id="hpBar" class="hp-bar"></div>
+        </div>
+        <span id="hpText" class="hud-value">100</span>
+      </div>
+      <div class="hud-center">
+        <span class="hud-title">CRYPTVAULT</span>
+        <span id="floorLabel" class="hud-floor">FLOOR 1 — THE CATACOMBS</span>
+      </div>
+      <div class="hud-right">
+        <span class="hud-label">SCORE</span>
+        <span id="scoreText" class="hud-value">000000</span>
+        <span class="hud-label" style="margin-left:16px">AMMO</span>
+        <span id="ammoText" class="hud-value">∞</span>
+        <span class="hud-label" style="margin-left:16px">🗝</span>
+        <span id="keyText" class="hud-value key-count">0</span>
+      </div>
+    </div>
+
+    <!-- Weapon Bar -->
+    <div id="weaponBar">
+      <div class="weapon-slot selected" id="slot1">
+        <span class="slot-num">1</span>
+        <span class="slot-icon">🗡</span>
+        <span class="slot-name">BLADE</span>
+      </div>
+      <div class="weapon-slot" id="slot2">
+        <span class="slot-num">2</span>
+        <span class="slot-icon">🔫</span>
+        <span class="slot-name">PISTOL</span>
+      </div>
+      <div class="weapon-slot" id="slot3">
+        <span class="slot-num">3</span>
+        <span class="slot-icon">💣</span>
+        <span class="slot-name">BOMB</span>
+      </div>
+    </div>
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Message Box -->
+    <div id="messageBox" class="hidden">
+      <p id="messageText"></p>
+    </div>
+
+    <!-- Flashlight toggle indicator -->
+    <div id="flashlightIndicator">
+      <span id="flashlightIcon">🔦</span>
+      <span id="flashlightStatus">ON</span>
+    </div>
+
+    <!-- Minimap -->
+    <canvas id="minimap"></canvas>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       PAUSE SCREEN
+  ═══════════════════════════════════════ -->
+  <div id="pauseScreen" class="screen">
+    <div class="pause-panel">
+      <h2 class="panel-title blink">— PAUSED —</h2>
+      <div class="menu-options">
+        <div class="menu-item selected" onclick="resumeGame()">▶ RESUME</div>
+        <div class="menu-item" onclick="showScreen('titleScreen'); resetGame()">▶ MAIN MENU</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       GAME OVER SCREEN
+  ═══════════════════════════════════════ -->
+  <div id="gameOverScreen" class="screen">
+    <div class="gameover-panel">
+      <div class="go-skull">☠</div>
+      <h1 class="go-title">YOU DIED</h1>
+      <p class="go-sub">THE DARKNESS CONSUMED YOU</p>
+      <p class="go-score">FINAL SCORE: <span id="finalScore">0</span></p>
+      <div class="menu-options">
+        <div class="menu-item selected" onclick="startGame()">▶ TRY AGAIN</div>
+        <div class="menu-item" onclick="showScreen('titleScreen'); resetGame()">▶ MAIN MENU</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       LEVEL COMPLETE SCREEN
+  ═══════════════════════════════════════ -->
+  <div id="levelCompleteScreen" class="screen">
+    <div class="levelcomplete-panel">
+      <h1 class="lc-title">FLOOR CLEARED</h1>
+      <p class="lc-sub">YOU DESCEND DEEPER...</p>
+      <p class="lc-score">SCORE: <span id="lcScore">0</span></p>
+      <button class="retro-btn" onclick="nextLevel()">► NEXT FLOOR</button>
+    </div>
+  </div>
+
+  <!-- Game JS -->
+  <script src="game.js"></script>
+</body>
+</html>
