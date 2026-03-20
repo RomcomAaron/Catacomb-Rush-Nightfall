@@ -179,13 +179,23 @@ html, body {
   transition: all 0.15s;
   letter-spacing: 2px;
 }
-.menu-item:hover,
+.menu-item.disabled {
+  color: #2b2b2b;
+  cursor: not-allowed;
+  border-color: transparent;
+  text-shadow: none;
+}
+.menu-item:not(.disabled):hover,
 .menu-item.selected {
   color: var(--green-crt);
   border-color: var(--green-crt);
   background: rgba(0,255,65,0.05);
   text-shadow: 0 0 10px var(--green-crt);
   padding-left: 36px;
+}
+.menu-item.disabled:hover {
+  background: transparent;
+  padding-left: 24px;
 }
 
 .press-start {

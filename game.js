@@ -13,35 +13,73 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+const SAVE_KEY = 'dungeon-rush-nightfall-save-v1';
+let refreshTitleMenuState = () => {};
+
 /* ──────────────────────────────────────────────
    TITLE SCREEN MENU NAVIGATION
 ────────────────────────────────────────────── */
 (function initMenu() {
-  const items = document.querySelectorAll('.menu-item');
+  const items = Array.from(document.querySelectorAll('#titleScreen .menu-item'));
+  const continueItem = document.getElementById('menuContinue');
   let selectedIndex = 0;
 
-  function updateSelection(id) {
-    document.querySelectorAll('#titleScreen .menu-item').forEach((el, i) => {
+  function selectableIndexes() {
+    return items
+      .map((el, i) => (el.classList.contains('disabled') ? -1 : i))
+      .filter(i => i >= 0);
+  }
+
+  function updateSelection() {
+    const selectable = selectableIndexes();
+    if (!selectable.includes(selectedIndex)) selectedIndex = selectable[0] ?? 0;
+    items.forEach((el, i) => {
       el.classList.toggle('selected', i === selectedIndex);
     });
   }
+
+  function moveSelection(delta) {
+    const selectable = selectableIndexes();
+    if (selectable.length === 0) return;
+    let pos = selectable.indexOf(selectedIndex);
+    if (pos === -1) pos = 0;
+    pos = (pos + delta + selectable.length) % selectable.length;
+    selectedIndex = selectable[pos];
+    updateSelection();
+  }
+
+  function activateSelection() {
+    const el = items[selectedIndex];
+    if (!el || el.classList.contains('disabled')) return;
+    if (el.id === 'menuStart') startGame();
+    else if (el.id === 'menuContinue') continueGame();
+    else if (el.id === 'menuControls') showScreen('controlsScreen');
+    else if (el.id === 'menuCredits') showScreen('creditsScreen');
+  }
+
+  refreshTitleMenuState = function refreshTitleMenu() {
+    const hasSave = hasSavedProgress();
+    continueItem.classList.toggle('disabled', !hasSave);
+    updateSelection();
+  };
+
+  refreshTitleMenuState();
 
   document.addEventListener('keydown', e => {
     if (!document.getElementById('titleScreen').classList.contains('active')) return;
 
     if (e.key === 'ArrowDown' || e.key === 's') {
-      selectedIndex = (selectedIndex + 1) % 3;
-      updateSelection();
+      moveSelection(1);
     }
     if (e.key === 'ArrowUp' || e.key === 'w') {
-      selectedIndex = (selectedIndex + 2) % 3;
-      updateSelection();
+      moveSelection(-1);
     }
     if (e.key === 'Enter') {
-      [startGame, () => showScreen('controlsScreen'), () => showScreen('creditsScreen')][selectedIndex]();
+      activateSelection();
     }
   });
 
+  document.getElementById('menuContinue').addEventListener('click', continueGame);
   document.getElementById('menuStart').addEventListener('click', startGame);
   document.getElementById('menuControls').addEventListener('click', () => showScreen('controlsScreen'));
   document.getElementById('menuCredits').addEventListener('click', () => showScreen('creditsScreen'));
@@ -108,7 +146,77 @@ const state = {
   msgTimeout:  null,
   doorKeys:    0,
   animFrame:   null,
+  lastSaveTime: 0,
 };
+
+function hasSavedProgress() {
+  try {
+    return !!localStorage.getItem(SAVE_KEY);
+  } catch {
+    return false;
+  }
+}
+
+function encodeAmmo(ammo) {
+  return ammo.map(v => (v === Infinity ? 'INF' : v));
+}
+
+function decodeAmmo(ammo) {
+  const fallback = [Infinity, 20, 3];
+  if (!Array.isArray(ammo) || ammo.length < 3) return fallback;
+  return ammo.slice(0, 3).map((v, i) => {
+    if (v === 'INF') return Infinity;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback[i];
+  });
+}
+
+function saveProgress() {
+  if (!state.player || !state.map.length) return;
+  const payload = {
+    version: 1,
+    floor: state.floor,
+    score: state.score,
+    map: state.map,
+    player: state.player,
+    enemies: state.enemies,
+    items: state.items,
+    weapon: state.weapon,
+    ammo: encodeAmmo(state.ammo),
+    doorKeys: state.doorKeys,
+    flashlight: state.flashlight,
+    timestamp: Date.now(),
+  };
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+    refreshTitleMenuState();
+  } catch {
+    // Ignore save failures (private mode, quota, etc.)
+  }
+}
+
+function clearSavedProgress() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+    refreshTitleMenuState();
+  } catch {
+    // Ignore clear failures.
+  }
+}
+
+function loadSavedProgress() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return null;
+    if (!Array.isArray(data.map) || !Array.isArray(data.enemies) || !Array.isArray(data.items)) return null;
+    if (!data.player || typeof data.player !== 'object') return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 /* ──────────────────────────────────────────────
    CANVAS SETUP
@@ -388,6 +496,7 @@ function spawnItems(map, doorKeyPairs) {
 ────────────────────────────────────────────── */
 function startGame() {
   if (state.animFrame) cancelAnimationFrame(state.animFrame);
+  clearSavedProgress();
   state.floor  = 1;
   state.score  = 0;
   state.weapon = 0;
@@ -400,6 +509,7 @@ function startGame() {
   state.running = true;
   state.paused  = false;
   state.lastTime = performance.now();
+  state.lastSaveTime = state.lastTime;
   state.animFrame = requestAnimationFrame(gameLoop);
   updateHUD();
 }
@@ -512,14 +622,60 @@ function nextLevel() {
   state.running = true;
   state.paused  = false;
   state.lastTime = performance.now();
+  state.lastSaveTime = state.lastTime;
   state.animFrame = requestAnimationFrame(gameLoop);
   updateHUD();
+}
+
+function continueGame() {
+  const save = loadSavedProgress();
+  if (!save) {
+    refreshTitleMenuState();
+    return;
+  }
+
+  if (state.animFrame) cancelAnimationFrame(state.animFrame);
+  resetGame(false);
+
+  const defaultPlayer = createPlayer();
+  state.floor = Math.min(Math.max(1, Number(save.floor) || 1), MAX_FLOOR);
+  state.score = Math.max(0, Math.floor(Number(save.score) || 0));
+  state.map = save.map;
+  state.player = {
+    ...defaultPlayer,
+    ...save.player,
+    facing: {
+      ...defaultPlayer.facing,
+      ...(save.player.facing || {}),
+    },
+  };
+  state.enemies = save.enemies;
+  state.items = save.items;
+  state.weapon = Math.min(2, Math.max(0, Math.floor(Number(save.weapon) || 0)));
+  state.ammo = decodeAmmo(save.ammo);
+  state.doorKeys = Math.max(0, Math.floor(Number(save.doorKeys) || 0));
+  state.flashlight = save.flashlight !== false;
+  state.bullets = [];
+  state.particles = [];
+
+  buildMinimap();
+  resizeCanvas();
+  showScreen('gameScreen');
+  state.running = true;
+  state.paused = false;
+  state.lastTime = performance.now();
+  state.lastSaveTime = state.lastTime;
+  selectWeapon(state.weapon);
+  document.getElementById('flashlightStatus').textContent = state.flashlight ? 'ON' : 'OFF';
+  updateHUD();
+  state.animFrame = requestAnimationFrame(gameLoop);
 }
 
 function resumeGame() {
   state.paused = false;
   showScreen('gameScreen');
   state.lastTime = performance.now();
+  state.lastSaveTime = state.lastTime;
   state.animFrame = requestAnimationFrame(gameLoop);
 }
 
@@ -697,6 +853,7 @@ function tryUseItem() {
 function triggerLevelComplete() {
   state.running = false;
   cancelAnimationFrame(state.animFrame);
+  saveProgress();
   document.getElementById('lcScore').textContent = state.score;
 
   const isFinalFloor = state.floor >= MAX_FLOOR;
@@ -718,6 +875,7 @@ function triggerLevelComplete() {
 function triggerGameOver() {
   state.running = false;
   cancelAnimationFrame(state.animFrame);
+  clearSavedProgress();
   document.getElementById('finalScore').textContent = state.score;
   showScreen('gameOverScreen');
 }
@@ -1601,6 +1759,11 @@ function gameLoop(timestamp) {
   const dt = Math.min(timestamp - state.lastTime, 50); // cap at 50ms
   state.lastTime = timestamp;
 
+  if (timestamp - state.lastSaveTime > 5000) {
+    saveProgress();
+    state.lastSaveTime = timestamp;
+  }
+
   updatePlayer(dt);
   updateEnemies(dt);
   updateBullets(dt);
@@ -1618,5 +1781,9 @@ function gameLoop(timestamp) {
   overlay.id = 'damageOverlay';
   overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9990;background:transparent;';
   document.body.appendChild(overlay);
+  window.addEventListener('beforeunload', () => {
+    if (state.running && !state.paused) saveProgress();
+  });
+  refreshTitleMenuState();
   showScreen('titleScreen');
 })();
