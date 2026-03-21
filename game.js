@@ -972,17 +972,6 @@ function updateEnemies(dt) {
       }
       e.x = nx; e.y = ny;
 
-      // SPECTER prefers ranged attacks.
-      if (e.name === 'SPECTER' && dist < (e.shootRange || TILE * 7) && e.attackCooldown <= 0) {
-        e.attackCooldown = 80;
-        fireBullet({ x: e.x, y: e.y, facing: { x: dirX, y: dirY } },
-          dirX, dirY, 3.5, 8, e.color);
-        state.bullets[state.bullets.length-1].fromPlayer = false;
-      }
-      if (e.name === 'SPECTER' && dist < TILE * 0.7 && e.attackCooldown <= 0) {
-        e.attackCooldown = 70;
-        hurtPlayer(Math.max(3, Math.floor(e.dmg * 0.7)), e);
-      }
     } else {
       // Idle wander
       if (e.stateTimer % 120 === 0) {
@@ -999,6 +988,20 @@ function updateEnemies(dt) {
     const postDx = p.x - e.x;
     const postDy = p.y - e.y;
     const postDist = Math.hypot(postDx, postDy);
+    if (e.name === 'SPECTER' && e.attackCooldown <= 0) {
+      if (postDist < TILE * 0.9) {
+        e.attackCooldown = 45;
+        hurtPlayer(Math.max(3, Math.floor(e.dmg * 0.8)), e);
+      } else {
+        const postSafeDist = Math.max(postDist, 0.0001);
+        const shotX = postDx / postSafeDist;
+        const shotY = postDy / postSafeDist;
+        e.attackCooldown = 80;
+        fireBullet({ x: e.x, y: e.y, facing: { x: shotX, y: shotY } },
+          shotX, shotY, 3.5, 8, e.color);
+        state.bullets[state.bullets.length-1].fromPlayer = false;
+      }
+    }
     if (e.name !== 'SPECTER' && postDist < meleeThreshold && e.attackCooldown <= 0) {
       e.attackCooldown = e.behavior === 'skittish' ? 45 : 65;
       hurtPlayer(e.dmg, e);
