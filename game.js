@@ -162,6 +162,7 @@ const state = {
   lastTime:    0,
   msgTimeout:  null,
   doorKeys:    0,
+  retrySnapshot: null,
   animFrame:   null,
   lastSaveTime: 0,
 };
@@ -680,6 +681,7 @@ function spawnItems(map, doorKeyPairs) {
 function startGame() {
   if (state.animFrame) cancelAnimationFrame(state.animFrame);
   clearSavedProgress();
+  state.retrySnapshot = null;
   state.floor  = 1;
   state.score  = 0;
   state.weapon = 0;
@@ -704,6 +706,37 @@ function startGame() {
   state.lastSaveTime = state.lastTime;
   state.animFrame = requestAnimationFrame(gameLoop);
   updateHUD();
+}
+
+function retryFromDeath() {
+  const snap = state.retrySnapshot;
+  if (!snap) {
+    startGame();
+    return;
+  }
+
+  if (state.animFrame) cancelAnimationFrame(state.animFrame);
+  resetGame(false);
+
+  state.floor = Math.min(Math.max(1, snap.floor), MAX_FLOOR);
+  state.score = Math.max(0, snap.score);
+  state.weapon = Math.min(2, Math.max(0, snap.weapon));
+  state.ammo = decodeAmmo(encodeAmmo(snap.ammo));
+  state.medkits = Math.max(0, snap.medkits);
+  state.flashlight = snap.flashlight !== false;
+  state.doorKeys = 0;
+
+  buildLevel();
+  showScreen('gameScreen');
+  resizeCanvas();
+  state.running = true;
+  state.paused = false;
+  state.lastTime = performance.now();
+  state.lastSaveTime = state.lastTime;
+  selectWeapon(state.weapon);
+  document.getElementById('flashlightStatus').textContent = state.flashlight ? 'ON' : 'OFF';
+  updateHUD();
+  state.animFrame = requestAnimationFrame(gameLoop);
 }
 
 function resetGame(full = true) {
@@ -1114,6 +1147,14 @@ function triggerLevelComplete() {
 function triggerGameOver() {
   state.running = false;
   cancelAnimationFrame(state.animFrame);
+  state.retrySnapshot = {
+    floor: state.floor,
+    score: state.score,
+    weapon: state.weapon,
+    ammo: [...state.ammo],
+    medkits: state.medkits,
+    flashlight: state.flashlight,
+  };
   clearSavedProgress();
   document.getElementById('finalScore').textContent = state.score;
   showScreen('gameOverScreen');
