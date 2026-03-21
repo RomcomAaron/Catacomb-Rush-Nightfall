@@ -425,7 +425,13 @@ function placeDoorsSafe(map, floor, exitPos) {
     .filter(cell => map[cell.r][cell.c] === TILE_EMPTY)
     .filter(cell => isDoorChokepoint(map, cell.r, cell.c))
     .filter(cell => Math.abs(cell.r - 1) + Math.abs(cell.c - 1) > 3)
-    .filter(cell => Math.abs(cell.r - exitPos.r) + Math.abs(cell.c - exitPos.c) > 1);
+    .filter(cell => Math.abs(cell.r - exitPos.r) + Math.abs(cell.c - exitPos.c) > 1)
+    .filter(cell => {
+      map[cell.r][cell.c] = TILE_DOOR;
+      const blocks = doorBlocksExit(map, exitPos);
+      map[cell.r][cell.c] = TILE_EMPTY;
+      return blocks;
+    });
 
   if (pathChokes.length) {
     const startIdx = Math.max(0, Math.floor(pathChokes.length * 0.55));
@@ -469,6 +475,21 @@ function isTooCloseToPlacedDoor(door, placedDoors) {
     if (manhattan <= 2) return true;
   }
   return false;
+}
+
+function doorBlocksExit(map, exitPos) {
+  const reachable = floodFill(map, 1, 1, TILE_DOOR);
+  return !reachable.has(`${exitPos.r},${exitPos.c}`);
+}
+
+function countLockedDoors() {
+  let count = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (state.map[r]?.[c] === TILE_DOOR) count++;
+    }
+  }
+  return count;
 }
 
 function isDoorChokepoint(map, r, c) {
@@ -1342,10 +1363,7 @@ function updatePlayer(dt) {
   state.items = state.items.filter(i => !i.collected);
 
   // Check exit
-  const pr = Math.floor(p.y / TILE), pc = Math.floor(p.x / TILE);
-  if (state.map[pr]?.[pc] === TILE_EXIT) {
-    triggerLevelComplete();
-  }
+  // Exit is now interact-only (E key) and lock-gated.
 }
 
 function hurtPlayer(dmg, source) {
