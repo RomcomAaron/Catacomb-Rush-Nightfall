@@ -124,6 +124,8 @@ const TILE_DOOR   = 2;
 const TILE_CHEST  = 3;
 const TILE_EXIT   = 4;
 
+const MEDKIT_HEAL = 22;
+
 /* ──────────────────────────────────────────────
    GAME STATE
 ────────────────────────────────────────────── */
@@ -143,6 +145,8 @@ const state = {
   weapon:      0,            // 0=blade, 1=pistol, 2=bomb
   ammo:        [Infinity, 20, 3],
   medkits:     0,
+  levelMedkitsCollected: 0,
+  levelMedkitCap: 1,
   lastTime:    0,
   msgTimeout:  null,
   doorKeys:    0,
@@ -185,6 +189,8 @@ function saveProgress() {
     weapon: state.weapon,
     ammo: encodeAmmo(state.ammo),
     medkits: state.medkits,
+    levelMedkitsCollected: state.levelMedkitsCollected,
+    levelMedkitCap: state.levelMedkitCap,
     doorKeys: state.doorKeys,
     flashlight: state.flashlight,
     timestamp: Date.now(),
@@ -479,16 +485,23 @@ function spawnItems(map, doorKeyPairs) {
     });
   }
 
-  // Extra random pickups (health / ammo)
+  // Extra random pickups (health is intentionally scarce)
   const extras = Math.floor(4 + state.floor * 1.5);
+  let healthPlaced = 0;
+  const maxHealthSpawns = Math.max(0, state.levelMedkitCap - state.levelMedkitsCollected);
   for (let i = 0; i < extras; i++) {
     const pos = randomEmpty(map);
     if (!pos) continue;
     const roll = Math.random();
+    let type = 'ammo';
+    if (healthPlaced < maxHealthSpawns && roll < 0.14) {
+      type = 'health';
+      healthPlaced++;
+    }
     items.push({
       x: pos.c * TILE + TILE / 2,
       y: pos.r * TILE + TILE / 2,
-      type: roll < 0.55 ? 'health' : 'ammo',
+      type,
       collected: false,
     });
   }
@@ -506,6 +519,8 @@ function startGame() {
   state.weapon = 0;
   state.ammo   = [Infinity, 20, 3];
   state.medkits = 0;
+  state.levelMedkitsCollected = 0;
+  state.levelMedkitCap = 1;
   state.doorKeys = 0;
   resetGame(false);
   buildLevel();
@@ -529,10 +544,14 @@ function resetGame(full = true) {
   state.particles = [];
   state.items     = [];
   state.keys      = {};
+  state.levelMedkitsCollected = 0;
+  state.levelMedkitCap = 1;
 }
 
 function buildLevel() {
   state.floor = Math.min(state.floor, MAX_FLOOR);
+  state.levelMedkitsCollected = 0;
+  state.levelMedkitCap = Math.min(2, 1 + Math.floor((state.floor - 1) / 25));
   state.map          = generateMap(state.floor);
   // Place doors safely and get matching key positions
   const doorKeyPairs = placeDoorsSafe(state.map, state.floor);
@@ -659,6 +678,8 @@ function continueGame() {
   state.weapon = Math.min(2, Math.max(0, Math.floor(Number(save.weapon) || 0)));
   state.ammo = decodeAmmo(save.ammo);
   state.medkits = Math.max(0, Math.floor(Number(save.medkits) || 0));
+  state.levelMedkitsCollected = Math.max(0, Math.floor(Number(save.levelMedkitsCollected) || 0));
+  state.levelMedkitCap = Math.max(1, Math.floor(Number(save.levelMedkitCap) || 1));
   state.doorKeys = Math.max(0, Math.floor(Number(save.doorKeys) || 0));
   state.flashlight = save.flashlight !== false;
   state.bullets = [];
@@ -849,8 +870,8 @@ function tryUseItem() {
   if (p.hp >= p.maxHp) { showMessage('HP FULL'); return; }
   if (state.medkits <= 0) { showMessage('NO MEDKITS'); return; }
   state.medkits--;
-  p.hp = Math.min(p.maxHp, p.hp + 30);
-  showMessage(`USED MEDKIT +30 HP (${state.medkits} LEFT)`);
+  p.hp = Math.min(p.maxHp, p.hp + MEDKIT_HEAL);
+  showMessage(`USED MEDKIT +${MEDKIT_HEAL} HP (${state.medkits} LEFT)`);
   updateHUD();
 }
 
@@ -903,8 +924,8 @@ function killEnemy(e) {
   spawnParticles(e.x, e.y, COLORS.blood, 18);
   spawnParticles(e.x, e.y, e.color, 8);
   state.enemies = state.enemies.filter(en => en !== e);
-  // chance to drop health
-  if (Math.random() < 0.35) {
+  // Health drops are rare and capped per level.
+  if (state.levelMedkitsCollected < state.levelMedkitCap && Math.random() < 0.08) {
     state.items.push({ x: e.x, y: e.y, type: 'health', collected: false });
   }
   updateHUD();
@@ -1081,8 +1102,17 @@ function collectItem(item) {
   item.collected = true;
   spawnParticles(item.x, item.y, item.type === 'health' ? COLORS.health : COLORS.ammo, 8);
   if (item.type === 'health') {
+    if (state.levelMedkitsCollected >= state.levelMedkitCap) {
+      const bonusBullets = 4 + Math.floor(Math.random() * 5);
+      state.ammo[1] += bonusBullets;
+      showMessage(`MEDKIT CAP REACHED (+${bonusBullets} AMMO)`);
+      state.score += 10;
+      updateHUD();
+      return;
+    }
+    state.levelMedkitsCollected++;
     state.medkits++;
-    showMessage(`+1 MEDKIT (${state.medkits} TOTAL)`);
+    showMessage(`+1 MEDKIT (${state.medkits} TOTAL, ${state.levelMedkitsCollected}/${state.levelMedkitCap} THIS FLOOR)`);
   } else if (item.type === 'ammo') {
     const bullets = 6 + Math.floor(Math.random()*8);
     state.ammo[1] += bullets;
