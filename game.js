@@ -505,6 +505,7 @@ function createPlayer() {
     speed: 2.8,
     facing: { x: 0, y: 1 },
     attackCooldown: 0,
+    slashTimer: 0,
     invincibleTime: 0,
     frame: 0,
     frameTimer: 0,
@@ -878,14 +879,14 @@ function triggerAttack() {
   if (state.weapon === 0) {
     // BLADE — melee arc
     p.attackCooldown = Math.max(8, Math.round(25 * cooldownMul));
-    spawnMeleeParticles(p);
+    p.slashTimer = 8;
     meleeHit(p, 60, Math.floor(20 * rageMul));
   } else if (state.weapon === 1) {
     // PISTOL
     if (state.ammo[1] <= 0) { showMessage('NO AMMO!'); return; }
     state.ammo[1]--;
     p.attackCooldown = Math.max(8, Math.round(18 * cooldownMul));
-    fireBullet(p, p.facing.x, p.facing.y, 6, Math.floor(15 * rageMul), COLORS.bullet);
+    fireBullet(p, p.facing.x, p.facing.y, 6, Math.floor(15 * rageMul), COLORS.bullet, 'hex');
     spawnMuzzleFlash(p);
   } else if (state.weapon === 2) {
     // BOMB
@@ -906,12 +907,13 @@ function meleeHit(p, range, dmg) {
   });
 }
 
-function fireBullet(p, dx, dy, speed, dmg, color) {
+function fireBullet(p, dx, dy, speed, dmg, color, style = 'normal') {
   const len = Math.hypot(dx, dy) || 1;
   state.bullets.push({
     x: p.x, y: p.y,
     vx: dx/len * speed, vy: dy/len * speed,
     dmg, color,
+    style,
     life: 80,
     fromPlayer: true,
   });
@@ -1140,7 +1142,7 @@ function updateEnemies(dt) {
         const shotY = postDy / postSafeDist;
         e.attackCooldown = 80;
         fireBullet({ x: e.x, y: e.y, facing: { x: shotX, y: shotY } },
-          shotX, shotY, 3.5, Math.floor(8 * moonDamageMul), e.color);
+          shotX, shotY, 3.5, Math.floor(8 * moonDamageMul), e.color, 'specter');
         state.bullets[state.bullets.length-1].fromPlayer = false;
       }
     }
@@ -1185,6 +1187,7 @@ function updatePlayer(dt) {
   }
 
   if (p.attackCooldown > 0) p.attackCooldown--;
+  if (p.slashTimer > 0) p.slashTimer--;
   if (p.invincibleTime > 0) p.invincibleTime--;
 
   // Item pickup
@@ -1259,6 +1262,12 @@ function updateBullets(dt) {
     b.x += b.vx * (dt/16);
     b.y += b.vy * (dt/16);
     b.life--;
+
+    // Bombs leave a fiery trail while in flight.
+    if (b.isBomb && b.life % 3 === 0) {
+      spawnParticles(b.x, b.y, '#ff9a2f', 1);
+      spawnParticles(b.x, b.y, '#ffe6a3', 1);
+    }
 
     // Wall collision
     if (collidesWithWall(b.x, b.y, 4)) {
@@ -1351,7 +1360,7 @@ function spawnMuzzleFlash(p) {
       vx: p.facing.x * 2 + (Math.random()-0.5)*3,
       vy: p.facing.y * 2 + (Math.random()-0.5)*3,
       life: 8, maxLife: 8,
-      color: '#fff',
+      color: i % 2 === 0 ? '#9fd8ff' : '#fff',
       size: 3,
     });
   }
@@ -1674,15 +1683,51 @@ function render() {
   for (const b of state.bullets) {
     ctx.save();
     if (b.isBomb) {
-      ctx.fillStyle = COLORS.bomb;
+      // VOID BOMB projectile look: core + ring + spark.
+      ctx.fillStyle = '#ff7f32';
       ctx.beginPath();
       ctx.arc(b.x, b.y, 5, 0, Math.PI*2);
       ctx.fill();
+      ctx.strokeStyle = '#ffd27a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 7.5, 0, Math.PI*2);
+      ctx.stroke();
       // fuse spark
       ctx.fillStyle = '#fff';
       ctx.beginPath();
       ctx.arc(b.x + b.vx*2, b.y + b.vy*2, 2, 0, Math.PI*2);
       ctx.fill();
+    } else if (b.style === 'hex') {
+      // HEX PISTOL projectile: glowing rune diamond.
+      ctx.translate(b.x, b.y);
+      ctx.rotate(Math.atan2(b.vy, b.vx));
+      ctx.shadowColor = '#8fd9ff';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#9fd8ff';
+      ctx.beginPath();
+      ctx.moveTo(6, 0);
+      ctx.lineTo(0, 3.2);
+      ctx.lineTo(-4.5, 0);
+      ctx.lineTo(0, -3.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#e9f9ff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else if (b.style === 'specter') {
+      // SPECTER projectile: ghostly orb with halo.
+      ctx.fillStyle = '#b97dff';
+      ctx.shadowColor = '#b97dff';
+      ctx.shadowBlur = 9;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 4.2, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(220,180,255,0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 6.5, 0, Math.PI*2);
+      ctx.stroke();
     } else {
       ctx.fillStyle = b.color;
       ctx.shadowColor = b.color;
@@ -1821,30 +1866,101 @@ function drawPlayerScreen(p, camX, camY) {
   ctx.fillRect(ex - s*0.22, ey - s*0.1, s*0.14, s*0.2);
   ctx.fillRect(ex + s*0.2,  ey - s*0.1, s*0.14, s*0.2);
 
-  // Weapon indicator
-  ctx.strokeStyle = state.weapon === 0 ? '#cccccc' : state.weapon === 1 ? '#aaaaaa' : '#ff8800';
-  ctx.lineWidth = 3;
+  // Weapon indicator with distinct silhouettes per weapon.
+  ctx.strokeStyle = state.weapon === 0 ? '#dfe6ef' : state.weapon === 1 ? '#9bb0c7' : '#ff8800';
+  ctx.lineWidth = 2.5;
   if (state.weapon === 0) {
-    // Blade — line pointing in facing direction
+    // RUNE BLADE
+    const bx = x + p.facing.x * s*0.9;
+    const by = y + p.facing.y * s*0.9 - s*0.2;
+    const tx = x + p.facing.x * s*2.2;
+    const ty = y + p.facing.y * s*2.2 - s*0.2;
+
+    ctx.strokeStyle = '#e4ecff';
     ctx.beginPath();
-    ctx.moveTo(x + p.facing.x * s*0.8, y + p.facing.y * s*0.8 - s*0.2);
-    ctx.lineTo(x + p.facing.x * s*2.0, y + p.facing.y * s*2.0 - s*0.2);
+    ctx.moveTo(bx, by);
+    ctx.lineTo(tx, ty);
     ctx.stroke();
-  } else if (state.weapon === 1) {
-    // Pistol barrel
-    ctx.fillStyle = '#999';
-    ctx.fillRect(
-      x + p.facing.x * s*0.7 - Math.abs(p.facing.y)*s*0.1,
-      y + p.facing.y * s*0.7 - s*0.15 - Math.abs(p.facing.x)*s*0.1,
-      p.facing.x !== 0 ? s*0.9 : s*0.25,
-      p.facing.y !== 0 ? s*0.9 : s*0.25
-    );
-  } else {
-    // Bomb dot
-    ctx.fillStyle = '#ff6600';
+
+    // Crossguard
+    const px = -p.facing.y;
+    const py = p.facing.x;
+    ctx.strokeStyle = '#92a6c2';
     ctx.beginPath();
-    ctx.arc(x + p.facing.x * s*1.2, y + p.facing.y * s*1.2, s*0.25, 0, Math.PI*2);
+    ctx.moveTo(bx + px * s*0.28, by + py * s*0.28);
+    ctx.lineTo(bx - px * s*0.28, by - py * s*0.28);
+    ctx.stroke();
+
+    // Rune gleam near the tip
+    ctx.fillStyle = '#9fd3ff';
+    ctx.fillRect(tx - 1.5, ty - 1.5, 3, 3);
+
+    // Slash effect while attacking with blade.
+    if (p.slashTimer > 0) {
+      const slashAlpha = Math.max(0.15, p.slashTimer / 8);
+      const slashCenterX = x + p.facing.x * s*1.4;
+      const slashCenterY = y + p.facing.y * s*1.2 - s*0.12;
+      const facingAngle = Math.atan2(p.facing.y, p.facing.x);
+      ctx.strokeStyle = `rgba(198,235,255,${slashAlpha})`;
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.arc(slashCenterX, slashCenterY, s*1.45, facingAngle - 0.78, facingAngle + 0.78);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(255,255,255,${slashAlpha * 0.75})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(slashCenterX, slashCenterY, s*1.18, facingAngle - 0.66, facingAngle + 0.66);
+      ctx.stroke();
+    }
+  } else if (state.weapon === 1) {
+    // HEX PISTOL
+    const gx = x + p.facing.x * s*0.8;
+    const gy = y + p.facing.y * s*0.8 - s*0.12;
+    const perpX = -p.facing.y;
+    const perpY = p.facing.x;
+
+    // Barrel
+    ctx.strokeStyle = '#9db0ca';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(gx, gy);
+    ctx.lineTo(gx + p.facing.x * s*1.1, gy + p.facing.y * s*1.1);
+    ctx.stroke();
+
+    // Grip block
+    ctx.fillStyle = '#7f92aa';
+    ctx.fillRect(
+      gx - perpX * s*0.16 - p.facing.x * s*0.14,
+      gy - perpY * s*0.16 - p.facing.y * s*0.14,
+      s*0.34,
+      s*0.34
+    );
+
+    // Muzzle glyph
+    ctx.fillStyle = '#72d0ff';
+    ctx.beginPath();
+    ctx.arc(gx + p.facing.x * s*1.15, gy + p.facing.y * s*1.15, s*0.1, 0, Math.PI*2);
     ctx.fill();
+  } else {
+    // VOID BOMB
+    const ox = x + p.facing.x * s*1.15;
+    const oy = y + p.facing.y * s*1.15;
+
+    // Core orb
+    ctx.fillStyle = '#ff6b22';
+    ctx.beginPath();
+    ctx.arc(ox, oy, s*0.26, 0, Math.PI*2);
+    ctx.fill();
+
+    // Ring and spark rune
+    ctx.strokeStyle = '#ffc14a';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(ox, oy, s*0.36, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.fillStyle = '#fff2a8';
+    ctx.fillRect(ox - 1, oy - s*0.52, 2, 3);
   }
 
   // Green glow ring around player
