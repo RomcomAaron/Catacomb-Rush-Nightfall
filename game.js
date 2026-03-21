@@ -427,7 +427,7 @@ const ENEMY_TYPES = [
   { name: 'GHOUL',   color: '#cc2200', glow: 'rgba(200,40,0,0.6)',    hp: 30, spd: 1.3,  dmg: 12, score: 120, size: 0.62, behavior: 'aggressive', chaseBias: 0.9,  meleeRange: 0.9 },
   { name: 'SPECTER', color: '#aa44ff', glow: 'rgba(170,68,255,0.6)',  hp: 18, spd: 2.0,  dmg: 6,  score: 170, size: 0.55, behavior: 'ranged',     chaseBias: 0.5,  meleeRange: 0.65, preferredRange: TILE * 3.2, shootRange: TILE * 8.5 },
   { name: 'REAPER',  color: '#4444cc', glow: 'rgba(80,80,220,0.65)',  hp: 75, spd: 0.75, dmg: 28, score: 340, size: 0.82, behavior: 'ambush',     chaseBias: 0.45, meleeRange: 1.0 },
-  { name: 'CRAWLER', color: '#55aa00', glow: 'rgba(80,160,0,0.55)',   hp: 40, spd: 1.55, dmg: 16, score: 220, size: 0.5,  behavior: 'skittish',   chaseBias: 0.35, meleeRange: 0.75, retreatRange: TILE * 2.1 },
+  { name: 'CRAWLER', color: '#55aa00', glow: 'rgba(80,160,0,0.55)',   hp: 40, spd: 0.9,  dmg: 16, score: 220, size: 0.5,  behavior: 'aggressive', chaseBias: 0.85, meleeRange: 1.1, retreatRange: TILE * 2.1 },
 ];
 
 function spawnEnemies(map, floor) {
@@ -921,6 +921,7 @@ function updateEnemies(dt) {
     const safeDist = Math.max(dist, 0.0001);
     const dirX = dx / safeDist;
     const dirY = dy / safeDist;
+    const meleeThreshold = TILE * (e.meleeRange || 0.8);
 
     // State machine: behavior-specific detection and pursuit
     let shouldChase = false;
@@ -932,7 +933,8 @@ function updateEnemies(dt) {
       } else if (e.behavior === 'ranged') {
         shouldChase = dist > (e.preferredRange || TILE * 3) && Math.random() < e.chaseBias;
       } else if (e.behavior === 'skittish') {
-        shouldChase = dist > (e.retreatRange || TILE * 2) && Math.random() < e.chaseBias;
+        // Skittish units normally keep distance, but still engage when very close.
+        shouldChase = dist < meleeThreshold * 1.6 || (dist > (e.retreatRange || TILE * 2) && Math.random() < e.chaseBias);
       } else {
         shouldChase = true;
       }
@@ -970,12 +972,6 @@ function updateEnemies(dt) {
       }
       e.x = nx; e.y = ny;
 
-      // Melee attack range varies by enemy type.
-      if (dist < TILE * (e.meleeRange || 0.8) && e.attackCooldown <= 0 && e.name !== 'SPECTER') {
-        e.attackCooldown = 65;
-        hurtPlayer(e.dmg, e);
-      }
-
       // SPECTER prefers ranged attacks.
       if (e.name === 'SPECTER' && dist < (e.shootRange || TILE * 7) && e.attackCooldown <= 0) {
         e.attackCooldown = 80;
@@ -997,6 +993,15 @@ function updateEnemies(dt) {
       const ny = e.y + e.vy;
       if (!collidesWithWall(nx, e.y, e.size * TILE)) e.x = nx; else e.vx *= -1;
       if (!collidesWithWall(e.x, ny, e.size * TILE)) e.y = ny; else e.vy *= -1;
+    }
+
+    // Melee attack check for all non-ranged enemies, regardless of current movement state.
+    const postDx = p.x - e.x;
+    const postDy = p.y - e.y;
+    const postDist = Math.hypot(postDx, postDy);
+    if (e.name !== 'SPECTER' && postDist < meleeThreshold && e.attackCooldown <= 0) {
+      e.attackCooldown = e.behavior === 'skittish' ? 45 : 65;
+      hurtPlayer(e.dmg, e);
     }
 
     e.frameTimer++;
