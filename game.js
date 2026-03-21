@@ -933,6 +933,16 @@ function resumeGame() {
   state.animFrame = requestAnimationFrame(gameLoop);
 }
 
+function goToMainMenu(saveCurrent = true) {
+  if (saveCurrent && state.player && state.map.length) {
+    saveProgress();
+  }
+  if (state.animFrame) cancelAnimationFrame(state.animFrame);
+  resetGame();
+  showScreen('titleScreen');
+  refreshTitleMenuState();
+}
+
 /* ──────────────────────────────────────────────
    INPUT HANDLING
 ────────────────────────────────────────────── */

@@ -163,7 +163,7 @@
       <h2 class="panel-title blink">— PAUSED —</h2>
       <div class="menu-options">
         <div class="menu-item selected" onclick="resumeGame()">▶ RESUME</div>
-        <div class="menu-item" onclick="showScreen('titleScreen'); resetGame()">▶ MAIN MENU</div>
+        <div class="menu-item" onclick="goToMainMenu(true)">▶ MAIN MENU</div>
       </div>
     </div>
   </div>
@@ -179,7 +179,7 @@
       <p class="go-score">FINAL SCORE: <span id="finalScore">0</span></p>
       <div class="menu-options">
         <div class="menu-item selected" onclick="retryFromDeath()">▶ TRY AGAIN</div>
-        <div class="menu-item" onclick="showScreen('titleScreen'); resetGame()">▶ MAIN MENU</div>
+        <div class="menu-item" onclick="goToMainMenu(false)">▶ MAIN MENU</div>
       </div>
     </div>
   </div>
