@@ -1569,7 +1569,7 @@ function drawDarkness(p, W, H, camX, camY) {
   const sy = p.y - camY;
   const angle    = Math.atan2(p.facing.y, p.facing.x);
   const range    = TILE * 11;
-  const fovAngle = Math.PI / 1.5;   // 120° cone
+  const fovAngle = Math.PI / 5;     // 60° cone total (front only)
 
   const dc = darkCtx;
   dc.clearRect(0, 0, W, H);
