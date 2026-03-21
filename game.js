@@ -125,6 +125,10 @@ const TILE_CHEST  = 3;
 const TILE_EXIT   = 4;
 
 const MEDKIT_HEAL = 22;
+const COMBO_WINDOW_MS = 2200;
+const BLOOD_MOON_MIN_COOLDOWN = 18000;
+const BLOOD_MOON_MAX_COOLDOWN = 32000;
+const BLOOD_MOON_DURATION = 12000;
 
 /* ──────────────────────────────────────────────
    GAME STATE
@@ -147,6 +151,14 @@ const state = {
   medkits:     0,
   levelMedkitsCollected: 0,
   levelMedkitCap: 1,
+  comboCount: 0,
+  comboTimer: 0,
+  comboMultiplier: 1,
+  relicName: 'NONE',
+  relicTimer: 0,
+  bloodMoonActive: false,
+  bloodMoonTimer: 0,
+  bloodMoonCooldown: 0,
   lastTime:    0,
   msgTimeout:  null,
   doorKeys:    0,
@@ -191,6 +203,14 @@ function saveProgress() {
     medkits: state.medkits,
     levelMedkitsCollected: state.levelMedkitsCollected,
     levelMedkitCap: state.levelMedkitCap,
+    comboCount: state.comboCount,
+    comboTimer: state.comboTimer,
+    comboMultiplier: state.comboMultiplier,
+    relicName: state.relicName,
+    relicTimer: state.relicTimer,
+    bloodMoonActive: state.bloodMoonActive,
+    bloodMoonTimer: state.bloodMoonTimer,
+    bloodMoonCooldown: state.bloodMoonCooldown,
     doorKeys: state.doorKeys,
     flashlight: state.flashlight,
     timestamp: Date.now(),
@@ -223,6 +243,71 @@ function loadSavedProgress() {
     return data;
   } catch {
     return null;
+  }
+}
+
+function randomRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function resetCombo() {
+  state.comboCount = 0;
+  state.comboTimer = 0;
+  state.comboMultiplier = 1;
+}
+
+function registerKillCombo() {
+  if (state.comboTimer > 0) state.comboCount++;
+  else state.comboCount = 1;
+  state.comboTimer = COMBO_WINDOW_MS;
+  state.comboMultiplier = 1 + Math.min(1.5, (state.comboCount - 1) * 0.2);
+}
+
+function addScore(base) {
+  const moonMul = state.bloodMoonActive ? 1.25 : 1;
+  const relicMul = state.relicName === 'GREED' ? 1.35 : 1;
+  const gained = Math.floor(base * state.comboMultiplier * moonMul * relicMul);
+  state.score += gained;
+  return gained;
+}
+
+function activateRelic(name, durationMs) {
+  state.relicName = name;
+  state.relicTimer = durationMs;
+  showMessage(`${name} RELIC AWAKENS!`);
+  updateHUD();
+}
+
+function updateStatusSystems(dt) {
+  if (state.comboTimer > 0) {
+    state.comboTimer -= dt;
+    if (state.comboTimer <= 0) resetCombo();
+  }
+
+  if (state.relicTimer > 0) {
+    state.relicTimer -= dt;
+    if (state.relicTimer <= 0) {
+      state.relicName = 'NONE';
+      state.relicTimer = 0;
+      showMessage('RELIC FADES...');
+    }
+  }
+
+  if (state.bloodMoonActive) {
+    state.bloodMoonTimer -= dt;
+    if (state.bloodMoonTimer <= 0) {
+      state.bloodMoonActive = false;
+      state.bloodMoonTimer = 0;
+      state.bloodMoonCooldown = randomRange(BLOOD_MOON_MIN_COOLDOWN, BLOOD_MOON_MAX_COOLDOWN);
+      showMessage('BLOOD MOON SETS');
+    }
+  } else {
+    state.bloodMoonCooldown -= dt;
+    if (state.bloodMoonCooldown <= 0) {
+      state.bloodMoonActive = true;
+      state.bloodMoonTimer = BLOOD_MOON_DURATION;
+      showMessage('BLOOD MOON RISES!');
+    }
   }
 }
 
@@ -521,6 +606,12 @@ function startGame() {
   state.medkits = 0;
   state.levelMedkitsCollected = 0;
   state.levelMedkitCap = 1;
+  resetCombo();
+  state.relicName = 'NONE';
+  state.relicTimer = 0;
+  state.bloodMoonActive = false;
+  state.bloodMoonTimer = 0;
+  state.bloodMoonCooldown = randomRange(BLOOD_MOON_MIN_COOLDOWN, BLOOD_MOON_MAX_COOLDOWN);
   state.doorKeys = 0;
   resetGame(false);
   buildLevel();
@@ -546,12 +637,24 @@ function resetGame(full = true) {
   state.keys      = {};
   state.levelMedkitsCollected = 0;
   state.levelMedkitCap = 1;
+  resetCombo();
+  state.relicName = 'NONE';
+  state.relicTimer = 0;
+  state.bloodMoonActive = false;
+  state.bloodMoonTimer = 0;
+  state.bloodMoonCooldown = randomRange(BLOOD_MOON_MIN_COOLDOWN, BLOOD_MOON_MAX_COOLDOWN);
 }
 
 function buildLevel() {
   state.floor = Math.min(state.floor, MAX_FLOOR);
   state.levelMedkitsCollected = 0;
   state.levelMedkitCap = Math.min(2, 1 + Math.floor((state.floor - 1) / 25));
+  resetCombo();
+  state.relicName = 'NONE';
+  state.relicTimer = 0;
+  state.bloodMoonActive = false;
+  state.bloodMoonTimer = 0;
+  state.bloodMoonCooldown = randomRange(BLOOD_MOON_MIN_COOLDOWN, BLOOD_MOON_MAX_COOLDOWN);
   state.map          = generateMap(state.floor);
   // Place doors safely and get matching key positions
   const doorKeyPairs = placeDoorsSafe(state.map, state.floor);
@@ -680,6 +783,14 @@ function continueGame() {
   state.medkits = Math.max(0, Math.floor(Number(save.medkits) || 0));
   state.levelMedkitsCollected = Math.max(0, Math.floor(Number(save.levelMedkitsCollected) || 0));
   state.levelMedkitCap = Math.max(1, Math.floor(Number(save.levelMedkitCap) || 1));
+  state.comboCount = Math.max(0, Math.floor(Number(save.comboCount) || 0));
+  state.comboTimer = Math.max(0, Number(save.comboTimer) || 0);
+  state.comboMultiplier = Math.max(1, Number(save.comboMultiplier) || 1);
+  state.relicName = typeof save.relicName === 'string' ? save.relicName : 'NONE';
+  state.relicTimer = Math.max(0, Number(save.relicTimer) || 0);
+  state.bloodMoonActive = !!save.bloodMoonActive;
+  state.bloodMoonTimer = Math.max(0, Number(save.bloodMoonTimer) || 0);
+  state.bloodMoonCooldown = Math.max(0, Number(save.bloodMoonCooldown) || randomRange(BLOOD_MOON_MIN_COOLDOWN, BLOOD_MOON_MAX_COOLDOWN));
   state.doorKeys = Math.max(0, Math.floor(Number(save.doorKeys) || 0));
   state.flashlight = save.flashlight !== false;
   state.bullets = [];
@@ -761,24 +872,27 @@ function triggerAttack() {
   const p = state.player;
   if (p.attackCooldown > 0) return;
 
+  const rageMul = state.relicName === 'RAGE' ? 1.55 : 1;
+  const cooldownMul = state.relicName === 'RAGE' ? 0.75 : 1;
+
   if (state.weapon === 0) {
     // BLADE — melee arc
-    p.attackCooldown = 25;
+    p.attackCooldown = Math.max(8, Math.round(25 * cooldownMul));
     spawnMeleeParticles(p);
-    meleeHit(p, 60, 20);
+    meleeHit(p, 60, Math.floor(20 * rageMul));
   } else if (state.weapon === 1) {
     // PISTOL
     if (state.ammo[1] <= 0) { showMessage('NO AMMO!'); return; }
     state.ammo[1]--;
-    p.attackCooldown = 18;
-    fireBullet(p, p.facing.x, p.facing.y, 6, 15, COLORS.bullet);
+    p.attackCooldown = Math.max(8, Math.round(18 * cooldownMul));
+    fireBullet(p, p.facing.x, p.facing.y, 6, Math.floor(15 * rageMul), COLORS.bullet);
     spawnMuzzleFlash(p);
   } else if (state.weapon === 2) {
     // BOMB
     if (state.ammo[2] <= 0) { showMessage('NO BOMBS!'); return; }
     state.ammo[2]--;
-    p.attackCooldown = 60;
-    throwBomb(p);
+    p.attackCooldown = Math.max(20, Math.round(60 * cooldownMul));
+    throwBomb(p, rageMul);
   }
   updateHUD();
 }
@@ -803,7 +917,7 @@ function fireBullet(p, dx, dy, speed, dmg, color) {
   });
 }
 
-function throwBomb(p) {
+function throwBomb(p, powerMul = 1) {
   state.bullets.push({
     x: p.x, y: p.y,
     vx: p.facing.x * 3, vy: p.facing.y * 3,
@@ -811,6 +925,7 @@ function throwBomb(p) {
     color: COLORS.bomb,
     life: 50,
     isBomb: true,
+    powerMul,
     fromPlayer: true,
   });
 }
@@ -840,17 +955,20 @@ function tryInteract() {
     if (tile === TILE_CHEST) {
       state.map[r][c] = TILE_EMPTY; // mark opened
       const reward = Math.random();
-      if (reward < 0.4) {
-        const heal = 20 + Math.floor(Math.random()*20);
+      if (reward < 0.3) {
+        const heal = 10 + Math.floor(Math.random()*12);
         p.hp = Math.min(p.maxHp, p.hp + heal);
         showMessage(`+${heal} HP!`);
-      } else if (reward < 0.7) {
+      } else if (reward < 0.62) {
         const bullets = 8 + Math.floor(Math.random()*10);
         state.ammo[1] += bullets;
         showMessage(`+${bullets} AMMO!`);
-      } else {
+      } else if (reward < 0.85) {
         state.ammo[2] += 1;
         showMessage('+1 BOMB!');
+      } else {
+        const relic = ['RAGE', 'SWIFT', 'GREED'][Math.floor(Math.random() * 3)];
+        activateRelic(relic, 15000);
       }
       state.score += 50;
       spawnParticles(c*TILE+TILE/2, r*TILE+TILE/2, COLORS.chest, 15);
@@ -920,7 +1038,8 @@ function hurtEnemy(e, dmg) {
 }
 
 function killEnemy(e) {
-  state.score += e.score;
+  addScore(e.score);
+  registerKillCombo();
   spawnParticles(e.x, e.y, COLORS.blood, 18);
   spawnParticles(e.x, e.y, e.color, 8);
   state.enemies = state.enemies.filter(en => en !== e);
@@ -933,6 +1052,8 @@ function killEnemy(e) {
 
 function updateEnemies(dt) {
   const p = state.player;
+  const moonSpeedMul = state.bloodMoonActive ? 1.2 : 1;
+  const moonDamageMul = state.bloodMoonActive ? 1.25 : 1;
   for (const e of state.enemies) {
     if (e.attackCooldown > 0) e.attackCooldown--;
     e.stateTimer++;
@@ -979,7 +1100,7 @@ function updateEnemies(dt) {
         e.behavior === 'aggressive' ? 1.15 :
         e.behavior === 'ranged' ? 0.95 :
         e.behavior === 'ambush' ? 1.05 : 1;
-      const spd = e.spd * behaviorSpeed * (dt / 16);
+      const spd = e.spd * behaviorSpeed * moonSpeedMul * (dt / 16);
       let nx = e.x + moveX * spd;
       let ny = e.y + moveY * spd;
 
@@ -1012,20 +1133,20 @@ function updateEnemies(dt) {
     if (e.name === 'SPECTER' && e.attackCooldown <= 0) {
       if (postDist < TILE * 0.9) {
         e.attackCooldown = 45;
-        hurtPlayer(Math.max(3, Math.floor(e.dmg * 0.8)), e);
+        hurtPlayer(Math.max(3, Math.floor(e.dmg * 0.8 * moonDamageMul)), e);
       } else {
         const postSafeDist = Math.max(postDist, 0.0001);
         const shotX = postDx / postSafeDist;
         const shotY = postDy / postSafeDist;
         e.attackCooldown = 80;
         fireBullet({ x: e.x, y: e.y, facing: { x: shotX, y: shotY } },
-          shotX, shotY, 3.5, 8, e.color);
+          shotX, shotY, 3.5, Math.floor(8 * moonDamageMul), e.color);
         state.bullets[state.bullets.length-1].fromPlayer = false;
       }
     }
     if (e.name !== 'SPECTER' && postDist < meleeThreshold && e.attackCooldown <= 0) {
       e.attackCooldown = e.behavior === 'skittish' ? 45 : 65;
-      hurtPlayer(e.dmg, e);
+      hurtPlayer(Math.floor(e.dmg * moonDamageMul), e);
     }
 
     e.frameTimer++;
@@ -1039,7 +1160,8 @@ function updateEnemies(dt) {
 function updatePlayer(dt) {
   const p = state.player;
   const k = state.keys;
-  const spd = p.speed * (dt / 16);
+  const speedMul = state.relicName === 'SWIFT' ? 1.35 : 1;
+  const spd = p.speed * speedMul * (dt / 16);
 
   let mx = 0, my = 0;
   if (k['w'] || k['arrowup'])    my -= 1;
@@ -1093,6 +1215,9 @@ function hurtPlayer(dmg, source) {
   overlay.classList.remove('hit');
   void overlay.offsetWidth;
   overlay.classList.add('hit');
+
+  // Taking a hit breaks combo streak.
+  resetCombo();
 
   updateHUD();
   if (p.hp <= 0) triggerGameOver();
@@ -1175,7 +1300,9 @@ function explodeBomb(b) {
   spawnParticles(b.x, b.y, '#ffcc00', 20);
   state.enemies.forEach(e => {
     const d = Math.hypot(e.x - b.x, e.y - b.y);
-    if (d < TILE * 3) hurtEnemy(e, Math.floor(45 * (1 - d / (TILE*3))));
+    if (d < TILE * 3) {
+      hurtEnemy(e, Math.floor(45 * (b.powerMul || 1) * (1 - d / (TILE*3))));
+    }
   });
   const pd = Math.hypot(state.player.x - b.x, state.player.y - b.y);
   if (pd < TILE * 2.5) hurtPlayer(10);
@@ -1282,6 +1409,30 @@ function updateHUD() {
   if (keyEl) {
     keyEl.textContent = state.doorKeys;
     keyEl.style.color = state.doorKeys > 0 ? '#ffe033' : '#555';
+  }
+
+  const comboEl = document.getElementById('comboText');
+  if (comboEl) {
+    comboEl.textContent = `x${state.comboMultiplier.toFixed(1)}`;
+    comboEl.style.color = state.comboMultiplier > 1 ? '#ffcc00' : '#00ff41';
+  }
+
+  const moonEl = document.getElementById('moonText');
+  if (moonEl) {
+    moonEl.textContent = state.bloodMoonActive ? 'BLOOD' : 'CALM';
+    moonEl.style.color = state.bloodMoonActive ? '#ff4444' : '#00ff41';
+  }
+
+  const effectEl = document.getElementById('effectLabel');
+  if (effectEl) {
+    if (state.relicName === 'NONE') {
+      effectEl.textContent = 'RELIC: NONE';
+      effectEl.style.color = '#555';
+    } else {
+      const sec = Math.max(0, Math.ceil(state.relicTimer / 1000));
+      effectEl.textContent = `RELIC: ${state.relicName} (${sec}s)`;
+      effectEl.style.color = '#ffb300';
+    }
   }
 }
 
@@ -1543,6 +1694,11 @@ function render() {
 
   // ── Flashlight / Darkness overlay (drawn BEFORE player so player appears on top) ──
   drawDarkness(p, W, H, camX, camY);
+
+  if (state.bloodMoonActive) {
+    ctx.fillStyle = 'rgba(180,20,20,0.1)';
+    ctx.fillRect(camX, camY, W, H);
+  }
 
   ctx.restore(); // end camera transform
 
@@ -1836,6 +1992,8 @@ function gameLoop(timestamp) {
   const dt = Math.min(timestamp - state.lastTime, 50); // cap at 50ms
   state.lastTime = timestamp;
 
+  updateStatusSystems(dt);
+
   if (timestamp - state.lastSaveTime > 5000) {
     saveProgress();
     state.lastSaveTime = timestamp;
@@ -1846,6 +2004,7 @@ function gameLoop(timestamp) {
   updateBullets(dt);
   updateParticles();
   render();
+  updateHUD();
 
   state.animFrame = requestAnimationFrame(gameLoop);
 }
