@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════
-  Dungeon Rush  Nightfall — RETRO HORROR GAME ENGINE
+  Catacomb Rush Nighfall — RETRO HORROR GAME ENGINE
    game.js  |  ES2020, no dependencies
 ══════════════════════════════════════════════ */
 
@@ -13,7 +13,7 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
-const SAVE_KEY = 'dungeon-rush-nightfall-save-v1';
+const SAVE_KEY = 'catacomb-rush-nighfall-save-v1';
 let refreshTitleMenuState = () => {};
 
 /* ──────────────────────────────────────────────
@@ -631,8 +631,8 @@ const FLOOR_NAMES = [
   'THE SILENT WELLSPRING',
   'KING WITHOUT LIGHT',
   'FINAL PROCESSION',
-  'THE NIGHTFALL THRONE',
-  'FLOOR 67: END OF NIGHTFALL',
+  'THE NIGHFALL THRONE',
+  'FLOOR 67: END OF NIGHFALL',
 ];
 
 function nextLevel() {
