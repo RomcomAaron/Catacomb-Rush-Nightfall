@@ -361,9 +361,6 @@ function generateMap(floor) {
   }
   carve(1, 1);
 
-  // Place exit on far end
-  map[ROWS-2][COLS-2] = TILE_EXIT;
-
   // Add chests (before doors so doors don't block chest cells)
   for (let i = 0; i < 4 + floor; i++) {
     const pos = randomEmpty(map);
@@ -405,72 +402,155 @@ function floodFill(map, sr, sc, blockedTile) {
      2. Does NOT fully disconnect the exit from the start
    Each key is placed in a cell reachable from start WITHOUT crossing that door.
 ────────────────────────────────────────────── */
-function placeDoorsSafe(map, floor) {
+function placeDoorsSafe(map, floor, exitPos) {
   const doorKeyPairs = [];   // [{door:{r,c}, key:{r,c}}]
-  const wantDoors = 2 + floor;
-  let placed = 0;
+  const maxDoors = Math.min(10, 3 + Math.floor(floor / 6));
+  const keyTaken = new Set();
 
-  // Collect all corridor (EMPTY) candidates for a door:
-  // must be a single-width chokepoint (exactly 2 passable neighbours in a line)
+  // Collect corridor chokepoints that are not too close to start/exit.
   const candidates = [];
-  for (let r = 2; r < ROWS-2; r++) {
-    for (let c = 2; c < COLS-2; c++) {
+  for (let r = 2; r < ROWS - 2; r++) {
+    for (let c = 2; c < COLS - 2; c++) {
       if (map[r][c] !== TILE_EMPTY) continue;
-      // Skip cells too close to player start
-      if (r <= 2 && c <= 2) continue;
-
-      const n = map[r-1][c] !== TILE_WALL;
-      const s = map[r+1][c] !== TILE_WALL;
-      const w = map[r][c-1] !== TILE_WALL;
-      const e = map[r][c+1] !== TILE_WALL;
-      const passCount = [n,s,w,e].filter(Boolean).length;
-
-      // A chokepoint has exactly 2 passable neighbours (corridor, not junction)
-      if (passCount === 2 && ((n&&s&&!w&&!e)||(w&&e&&!n&&!s))) {
-        candidates.push({r, c});
-      }
+      if (Math.abs(r - 1) + Math.abs(c - 1) < 4) continue;
+      if (Math.abs(r - exitPos.r) + Math.abs(c - exitPos.c) < 3) continue;
+      if (isDoorChokepoint(map, r, c)) candidates.push({ r, c });
     }
   }
-  shuffle(candidates);
 
-  for (const door of candidates) {
-    if (placed >= wantDoors) break;
+  // Place one dedicated final escape door on the start->exit route.
+  const path = findPath(map, { r: 1, c: 1 }, exitPos, false);
+  const pathChokes = path
+    .filter(cell => map[cell.r][cell.c] === TILE_EMPTY)
+    .filter(cell => isDoorChokepoint(map, cell.r, cell.c))
+    .filter(cell => Math.abs(cell.r - 1) + Math.abs(cell.c - 1) > 3)
+    .filter(cell => Math.abs(cell.r - exitPos.r) + Math.abs(cell.c - exitPos.c) > 1);
 
-    // Temporarily place door and test connectivity
-    map[door.r][door.c] = TILE_DOOR;
+  if (pathChokes.length) {
+    const startIdx = Math.max(0, Math.floor(pathChokes.length * 0.55));
+    const finalDoor = pathChokes[startIdx + Math.floor(Math.random() * Math.max(1, pathChokes.length - startIdx))];
+    map[finalDoor.r][finalDoor.c] = TILE_DOOR;
 
-    // Check exit is still reachable from player start (treating DOOR as blocked)
     const reachable = floodFill(map, 1, 1, TILE_DOOR);
-    const exitReachable = reachable.has(`${ROWS-2},${COLS-2}`);
+    const keyCell = randomReachableEmpty(reachable, map, finalDoor, keyTaken);
+    if (keyCell) {
+      doorKeyPairs.push({ door: finalDoor, key: keyCell });
+      keyTaken.add(`${keyCell.r},${keyCell.c}`);
+    } else {
+      // Fallback if no legal key location is found.
+      map[finalDoor.r][finalDoor.c] = TILE_EMPTY;
+    }
+  }
 
-    if (!exitReachable) {
-      // This door would trap the player — skip it
+  // Add extra doors and always place each key on the currently reachable side.
+  for (const door of shuffle(candidates)) {
+    if (doorKeyPairs.length >= maxDoors) break;
+    if (map[door.r][door.c] !== TILE_EMPTY) continue;
+    if (isTooCloseToPlacedDoor(door, doorKeyPairs.map(pair => pair.door))) continue;
+
+    map[door.r][door.c] = TILE_DOOR;
+    const reachable = floodFill(map, 1, 1, TILE_DOOR);
+    const keyCell = randomReachableEmpty(reachable, map, door, keyTaken);
+    if (!keyCell) {
       map[door.r][door.c] = TILE_EMPTY;
       continue;
     }
-
-    // Find a cell on the PLAYER side (reachable without crossing this door)
-    // to place the key — at least 3 tiles away from the door
-    const playerSideCells = [];
-    for (const cellKey of reachable) {
-      const [kr, kc] = cellKey.split(',').map(Number);
-      if (map[kr][kc] !== TILE_EMPTY) continue;
-      const dist = Math.abs(kr - door.r) + Math.abs(kc - door.c);
-      if (dist >= 3) playerSideCells.push({r: kr, c: kc});
-    }
-
-    if (playerSideCells.length === 0) {
-      map[door.r][door.c] = TILE_EMPTY;
-      continue;
-    }
-
-    // Pick a random cell from player side for the key
-    const keyCell = playerSideCells[Math.floor(Math.random() * playerSideCells.length)];
     doorKeyPairs.push({ door, key: keyCell });
-    placed++;
+    keyTaken.add(`${keyCell.r},${keyCell.c}`);
   }
 
   return doorKeyPairs;
+}
+
+function isTooCloseToPlacedDoor(door, placedDoors) {
+  for (const d of placedDoors) {
+    const manhattan = Math.abs(door.r - d.r) + Math.abs(door.c - d.c);
+    if (manhattan <= 2) return true;
+  }
+  return false;
+}
+
+function isDoorChokepoint(map, r, c) {
+  const n = map[r - 1][c] !== TILE_WALL;
+  const s = map[r + 1][c] !== TILE_WALL;
+  const w = map[r][c - 1] !== TILE_WALL;
+  const e = map[r][c + 1] !== TILE_WALL;
+  const passCount = [n, s, w, e].filter(Boolean).length;
+  return passCount === 2 && ((n && s && !w && !e) || (w && e && !n && !s));
+}
+
+function randomReachableEmpty(reachableSet, map, door, takenKeys = new Set()) {
+  const options = [];
+  for (const cellKey of reachableSet) {
+    const [r, c] = cellKey.split(',').map(Number);
+    if (map[r][c] !== TILE_EMPTY) continue;
+    if (takenKeys.has(`${r},${c}`)) continue;
+    const dist = Math.abs(r - door.r) + Math.abs(c - door.c);
+    if (dist >= 4) options.push({ r, c });
+  }
+  if (!options.length) return null;
+  // Prefer farther key placements to reduce "door right next to key" feel.
+  options.sort((a, b) => {
+    const da = Math.abs(a.r - door.r) + Math.abs(a.c - door.c);
+    const db = Math.abs(b.r - door.r) + Math.abs(b.c - door.c);
+    return db - da;
+  });
+  const top = options.slice(0, Math.max(1, Math.floor(options.length * 0.5)));
+  return top[Math.floor(Math.random() * top.length)];
+}
+
+function findPath(map, start, end, blockDoors = true) {
+  const queue = [[start.r, start.c]];
+  const visited = new Set([`${start.r},${start.c}`]);
+  const parent = new Map();
+
+  while (queue.length) {
+    const [r, c] = queue.shift();
+    if (r === end.r && c === end.c) break;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const tile = map[nr][nc];
+      if (tile === TILE_WALL) continue;
+      if (blockDoors && tile === TILE_DOOR) continue;
+      const key = `${nr},${nc}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      parent.set(key, `${r},${c}`);
+      queue.push([nr, nc]);
+    }
+  }
+
+  const endKey = `${end.r},${end.c}`;
+  if (!visited.has(endKey)) return [];
+  const path = [];
+  let cur = endKey;
+  while (cur) {
+    const [r, c] = cur.split(',').map(Number);
+    path.push({ r, c });
+    cur = parent.get(cur);
+  }
+  path.reverse();
+  return path;
+}
+
+function findExitCell(map) {
+  // Pick a far empty cell so the escape door isn't always in the same place.
+  const candidates = [];
+  for (let r = 1; r < ROWS - 1; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      if (map[r][c] !== TILE_EMPTY) continue;
+      if (r <= 2 && c <= 2) continue;
+      const dist = Math.abs(r - 1) + Math.abs(c - 1);
+      candidates.push({ r, c, dist });
+    }
+  }
+  if (!candidates.length) return { r: ROWS - 2, c: COLS - 2 };
+
+  candidates.sort((a, b) => b.dist - a.dist);
+  const top = candidates.slice(0, Math.max(1, Math.floor(candidates.length * 0.25)));
+  const pick = top[Math.floor(Math.random() * top.length)];
+  return { r: pick.r, c: pick.c };
 }
 
 function randomEmpty(map) {
@@ -657,8 +737,10 @@ function buildLevel() {
   state.bloodMoonTimer = 0;
   state.bloodMoonCooldown = randomRange(BLOOD_MOON_MIN_COOLDOWN, BLOOD_MOON_MAX_COOLDOWN);
   state.map          = generateMap(state.floor);
+  const exitPos = findExitCell(state.map);
+  state.map[exitPos.r][exitPos.c] = TILE_EXIT;
   // Place doors safely and get matching key positions
-  const doorKeyPairs = placeDoorsSafe(state.map, state.floor);
+  const doorKeyPairs = placeDoorsSafe(state.map, state.floor, exitPos);
   state.player       = createPlayer();
   state.enemies      = spawnEnemies(state.map, state.floor);
   state.items        = spawnItems(state.map, doorKeyPairs);
@@ -939,20 +1021,15 @@ function tryInteract() {
   const p = state.player;
   const pr = Math.floor(p.y / TILE), pc = Math.floor(p.x / TILE);
   const neighbors = [[0,0],[0,1],[0,-1],[1,0],[-1,0]];
+  const nearbyDoors = [];
+
   for (const [dr, dc] of neighbors) {
     const r = pr + dr, c = pc + dc;
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
     const tile = state.map[r][c];
     if (tile === TILE_DOOR) {
-      if (state.doorKeys > 0) {
-        state.doorKeys--;
-        state.map[r][c] = TILE_EMPTY;
-        showMessage('DOOR UNLOCKED!');
-        spawnParticles(c*TILE+TILE/2, r*TILE+TILE/2, '#f1c40f', 12);
-      } else {
-        showMessage('NEED A KEY!');
-      }
-      return;
+      nearbyDoors.push({ r, c, d: Math.abs(dr) + Math.abs(dc) });
+      continue;
     }
     if (tile === TILE_CHEST) {
       state.map[r][c] = TILE_EMPTY; // mark opened
@@ -980,6 +1057,20 @@ function tryInteract() {
     if (tile === TILE_EXIT) {
       triggerLevelComplete();
       return;
+    }
+  }
+
+  if (nearbyDoors.length) {
+    nearbyDoors.sort((a, b) => a.d - b.d);
+    const door = nearbyDoors[0];
+    if (state.doorKeys > 0) {
+      state.doorKeys--;
+      state.map[door.r][door.c] = TILE_EMPTY;
+      showMessage(`DOOR UNLOCKED! (${state.doorKeys} KEYS LEFT)`);
+      spawnParticles(door.c*TILE+TILE/2, door.r*TILE+TILE/2, '#f1c40f', 12);
+      updateHUD();
+    } else {
+      showMessage('NEED A KEY!');
     }
   }
 }
