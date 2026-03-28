@@ -320,13 +320,21 @@ const ctx       = canvas.getContext('2d');
 const mmCanvas  = document.getElementById('minimap');
 const mmCtx     = mmCanvas.getContext('2d');
 
+function getHudHeight() {
+  const hud = document.getElementById('hud');
+  return hud ? Math.ceil(hud.getBoundingClientRect().height) : 52;
+}
+
 function resizeCanvas() {
   const W = window.innerWidth;
-  const H = window.innerHeight - 52;
+  const hudHeight = getHudHeight();
+  const H = window.innerHeight - hudHeight;
+  document.documentElement.style.setProperty('--hud-height', `${hudHeight}px`);
   canvas.width  = W;
   canvas.height = H;
   canvas.style.width  = W + 'px';
   canvas.style.height = H + 'px';
+  canvas.style.top = hudHeight + 'px';
 }
 
 window.addEventListener('resize', () => {
@@ -1772,7 +1780,7 @@ function render() {
 
       // Key icon — drawn large and bright
       ctx.globalAlpha = 0.95;
-      ctx.font = `${TILE * 0.50}px serif`;
+      ctx.font = `${TILE * 0.50}px 'Press Start 2P', 'VT323', monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('🗝', item.x, item.y + bob);
@@ -1800,7 +1808,7 @@ function render() {
       ctx.arc(item.x, item.y + bob, TILE * 0.8, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 0.9 + pulse * 0.1;
-      ctx.font = `${TILE * 0.65}px serif`;
+      ctx.font = `${TILE * 0.65}px 'Press Start 2P', 'VT323', monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('♥', item.x, item.y + bob);

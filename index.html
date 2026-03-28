@@ -9,7 +9,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Creepster&family=Special+Elite&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
 
   <!-- Custom CSS -->
   <link rel="stylesheet" href="style.css" />
@@ -30,9 +30,15 @@
     <div id="titleBg"></div>
     <div class="title-content">
       <div class="blood-drip">
-        <span>C</span><span>A</span><span>T</span><span>A</span><span>C</span><span>O</span><span>M</span><span>B</span>
-        <span>R</span><span>U</span><span>S</span><span>H</span>
-        <span>N</span><span>I</span><span>G</span><span>H</span><span>F</span><span>A</span><span>L</span><span>L</span>
+        <div class="title-row">
+          <span>C</span><span>A</span><span>T</span><span>A</span><span>C</span><span>O</span><span>M</span><span>B</span>
+        </div>
+        <div class="title-row">
+          <span>R</span><span>U</span><span>S</span><span>H</span>
+        </div>
+        <div class="title-row">
+          <span>N</span><span>I</span><span>G</span><span>H</span><span>F</span><span>A</span><span>L</span><span>L</span>
+        </div>
       </div>
       <p class="subtitle">A DESCENT INTO DARKNESS</p>
       <div class="pixel-skull">☠</div>
@@ -93,28 +99,42 @@
     <!-- HUD Top Bar -->
     <div id="hud">
       <div class="hud-left">
-        <span class="hud-label">HP</span>
-        <div class="hp-bar-wrap">
-          <div id="hpBar" class="hp-bar"></div>
+        <div class="hud-stat hud-health">
+          <span class="hud-label">VITAL</span>
+          <div class="hp-bar-wrap">
+            <div id="hpBar" class="hp-bar"></div>
+          </div>
+          <span id="hpText" class="hud-value">100</span>
         </div>
-        <span id="hpText" class="hud-value">100</span>
       </div>
+
       <div class="hud-center">
         <span class="hud-title">Catacomb Rush Nighfall</span>
         <span id="floorLabel" class="hud-floor">FLOOR 1 — THE CATACOMBS</span>
-        <span id="effectLabel" class="hud-floor">RELIC: NONE</span>
+        <span id="effectLabel" class="hud-effect">RELIC: NONE</span>
       </div>
+
       <div class="hud-right">
-        <span class="hud-label">SCORE</span>
-        <span id="scoreText" class="hud-value">000000</span>
-        <span class="hud-label" style="margin-left:16px">AMMO</span>
-        <span id="ammoText" class="hud-value">∞</span>
-        <span class="hud-label" style="margin-left:16px">🗝</span>
-        <span id="keyText" class="hud-value key-count">0</span>
-        <span class="hud-label" style="margin-left:16px">COMBO</span>
-        <span id="comboText" class="hud-value">x1</span>
-        <span class="hud-label" style="margin-left:16px">MOON</span>
-        <span id="moonText" class="hud-value">CALM</span>
+        <div class="hud-stat">
+          <span class="hud-label">SCORE</span>
+          <span id="scoreText" class="hud-value">000000</span>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-label">AMMO</span>
+          <span id="ammoText" class="hud-value">∞</span>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-label">KEYS</span>
+          <span id="keyText" class="hud-value key-count">0</span>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-label">COMBO</span>
+          <span id="comboText" class="hud-value">x1.0</span>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-label">MOON</span>
+          <span id="moonText" class="hud-value">CALM</span>
+        </div>
       </div>
     </div>
 
