@@ -1628,7 +1628,7 @@ function showMessage(text) {
 /* ──────────────────────────────────────────────
    MINIMAP
 ────────────────────────────────────────────── */
-const MM_TILE = 5;
+const MM_TILE = 8;
 function buildMinimap() {
   mmCanvas.width  = COLS * MM_TILE;
   mmCanvas.height = ROWS * MM_TILE;

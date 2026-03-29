@@ -505,8 +505,8 @@ textarea {
 /* ── Minimap ──────────────────────────────── */
 #minimap {
   position: absolute;
-  top: calc(var(--hud-height) + 10px);
-  right: 12px;
+  top: max(calc(var(--hud-height) + 10px), 98px);
+  left: 12px;
   border: 1px solid rgba(192,57,43,0.4);
   background: rgba(0,0,0,0.7);
   z-index: 200;
@@ -540,8 +540,8 @@ textarea {
 /* ── Flashlight Indicator ─────────────────── */
 #flashlightIndicator {
   position: absolute;
-  top: calc(var(--hud-height) + 10px);
-  left: 12px;
+  top: max(calc(var(--hud-height) + 10px), 98px);
+  right: 12px;
   font-family: var(--font-pixel);
   font-size: 16px;
   color: var(--amber);
